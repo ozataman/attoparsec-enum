@@ -1,6 +1,0 @@
-= Readme =
-
-This package establishes a quick way to transform Attoparsec parsers into iteratees ready to be used with the enumerator library. 
-
-
-The enumerator library is an alternative implementation of Oleg's iteratees.
