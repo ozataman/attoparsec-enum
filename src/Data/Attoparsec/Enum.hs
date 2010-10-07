@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Data.Attoparsec.Enumerator
-  ( parserToIteratee ) where
+module Data.Attoparsec.Enum
+  ( iterParser ) where
 
 ------------------------------------------------------------------------------
 import           Control.Exception (Exception)
@@ -19,10 +19,10 @@ data ParserError = ParserError String
 instance Exception ParserError
 
 
-parserToIteratee :: (Monad m) => 
-                    Parser a
-                 -> Iteratee ByteString m a
-parserToIteratee p = continue $ f (\s -> parse p s)
+iterParser :: (Monad m) => 
+              Parser a
+           -> Iteratee ByteString m a
+iterParser p = continue $ f (\s -> parse p s)
   where
     f :: (Monad m) => 
          (ByteString -> Atto.Result a)
@@ -30,15 +30,18 @@ parserToIteratee p = continue $ f (\s -> parse p s)
       -> Iteratee ByteString m a
     f k EOF = endOfStream $ feed (k B.empty) B.empty
     f k (Chunks []) = continue $ f k
-    f k (Chunks xs) = 
-      let xs' = B.concat xs
-      in case k xs' of
-        Atto.Fail s' cxs e -> throwError $ ParserError $ "Parser encountered an error: " ++ e
-        Atto.Done s' r -> yield r (Chunks [s'])
+    f k (Chunks (x:xs)) = 
+      case k x of
+        Atto.Done s' r -> yield r $ if B.null s'
+          then Chunks xs
+          else Chunks (s':xs)
         Atto.Partial k' -> continue $ f k'
+        Atto.Fail s' cxs e -> throwError $ ParserError $ "Parser encountered an error: " ++ e
 
     endOfStream :: (Monad m) => Atto.Result a -> Iteratee ByteString m a
-    endOfStream (Atto.Done rest r) = yield r (Chunks [rest])
-    endOfStream (Atto.Fail _ _ e) = throwError $ ParserError $ "Parser encountered error at EOF (stream end) " ++ e 
+    endOfStream (Atto.Done rest r) = yield r $ if B.null rest then EOF else Chunks [rest]
+    endOfStream (Atto.Fail buf cxt e) = throwError $ ParserError $ 
+      "Parser encountered error at EOF (stream end): " ++ e ++ "\n" ++
+      "Context : " ++ show cxt ++ ". Remaining buffer: " ++ show buf
     endOfStream (Atto.Partial _) = throwError $ ParserError "Parser did not produce a value at EOF (stream end)"
 
